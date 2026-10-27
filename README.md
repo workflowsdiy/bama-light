@@ -108,6 +108,9 @@ Claude Code:
 /plugin install bama-light@bama-light
 ```
 
+Or from a shell: `claude plugin marketplace add workflowsdiy/bama-light`, then
+`claude plugin install bama-light@bama-light`.
+
 Codex:
 
 ```bash

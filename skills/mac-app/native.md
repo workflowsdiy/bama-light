@@ -49,8 +49,9 @@ Template helpers: `.noInitialFocus()`, `.fitsContent()` (`UI/WindowBehavior.swif
   shares the detail toolbar and items slide over it.
 - Do not put `.toolbar` on the `NavigationSplitView` itself. A `.primaryAction` there
   lands at the leading edge of the detail column.
-- An empty detail (`ContentUnavailableView`) with no toolbar items lets the content column's
-  `.primaryAction` move over it. Give the placeholder `.toolbar { ToolbarSpacer(.flexible) }`.
+- An empty detail with no toolbar items lets the content column's `.primaryAction` move over
+  it, and a bare `ContentUnavailableView` draws a hard toolbar edge. Use an empty grouped
+  `Form` with the `ContentUnavailableView` as an overlay, plus `.toolbar { ToolbarSpacer(.flexible) }`.
 - The inspector toggle is one button in the inspector's own `.toolbar`, after
   `ToolbarSpacer(.flexible)`. Without the spacer, it jumps when the inspector opens.
   Add no second toggle in the detail toolbar: it shows twice.

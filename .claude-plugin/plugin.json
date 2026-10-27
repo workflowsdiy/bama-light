@@ -1,6 +1,6 @@
 {
   "name": "bama-light",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Build small native Mac apps in SwiftUI with your coding agent: a template that builds without Xcode, snapshots and a self-test the agent checks itself, and the Mac-specific rules agents get wrong.",
   "icon": ".claude-plugin/icon.png",
   "author": {

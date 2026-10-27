@@ -95,10 +95,11 @@ struct ItemDetail: View {
         if let id = model.selection, let item = try? context.existingObject(with: id) as? Item, !item.isGone {
             ItemForm(item: item)
         } else {
-            // A Form keeps the detail column's soft toolbar edge; with no
-            // content there, the content column's New button would move over it.
-            ContentUnavailableView("No Selection", systemImage: "sidebar.right")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // An empty grouped Form keeps the detail column's soft toolbar edge, and
+            // the spacer keeps the content column's New button from moving over it.
+            Form {}
+                .formStyle(.grouped)
+                .overlay { ContentUnavailableView("No Selection", systemImage: "sidebar.right") }
                 .toolbar { ToolbarSpacer(.flexible) }
         }
     }
