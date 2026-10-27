@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 40 1440 300" role="img" aria-labelledby="t d">
+  <title id="t">bama-light</title>
+  <desc id="d">Small native Mac apps, built and checked by your coding agent. Xcode optional.</desc>
+  <style>
+    .word { fill: #101a2e; font: 700 132px system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; letter-spacing: -4px; }
+    .tag { fill: #4a5568; font: 400 38px system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+    </style>
+  <rect x="80" y="70" width="220" height="220" rx="50" fill="#336BF5"/>
+  <rect x="139" y="116" width="102" height="19" rx="9.5" fill="#fff" fill-opacity="0.6"/>
+  <rect x="123" y="143" width="134" height="101" rx="19" fill="#fff"/>
+  <text x="350" y="200" class="word">bama-light</text>
+  <text x="356" y="262" class="tag">Small native Mac apps, built and checked</text>
+  <text x="356" y="310" class="tag">by your coding agent. Xcode optional.</text>
+</svg>

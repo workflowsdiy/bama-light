@@ -1,0 +1,15 @@
+{
+  "name": "bama-light",
+  "owner": {
+    "name": "workflowsdiy"
+  },
+  "description": "bama-light: small native Mac apps, built and checked by your coding agent.",
+  "plugins": [
+    {
+      "name": "bama-light",
+      "source": "./",
+      "description": "Build small native Mac apps in SwiftUI with your coding agent: a template that builds without Xcode, snapshots and a self-test the agent checks itself, and the Mac-specific rules agents get wrong.",
+      "category": "development"
+    }
+  ]
+}

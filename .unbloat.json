@@ -1,0 +1,12 @@
+{
+  "allow": [],
+  "allowPhrases": [],
+  "skip": [],
+  "dupSkip": [],
+  "allowLarge": [],
+  "keep": [],
+  "budgets": {
+    "docs": 1136,
+    "instructions": 224
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "bama-light",
+  "version": "0.1.1",
+  "description": "Build small native Mac apps in SwiftUI with your coding agent: a template that builds without Xcode, snapshots and a self-test the agent checks itself, and the Mac-specific rules agents get wrong.",
+  "icon": ".claude-plugin/icon.png",
+  "author": {
+    "name": "workflowsdiy"
+  },
+  "homepage": "https://github.com/workflowsdiy/bama-light",
+  "repository": "https://github.com/workflowsdiy/bama-light",
+  "license": "MIT",
+  "keywords": [
+    "macos",
+    "swift",
+    "swiftui",
+    "mac-app",
+    "menu-bar",
+    "core-data",
+    "snapshots",
+    "agent-skills"
+  ],
+  "skills": [
+    "./skills/mac-app",
+    "./skills/agent-cli"
+  ]
+}
