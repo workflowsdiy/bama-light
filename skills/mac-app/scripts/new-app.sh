@@ -9,6 +9,7 @@ name=${1:?usage: new-app.sh <AppName> <bundle-id> [parent-folder]}
 bundle=${2:?usage: new-app.sh <AppName> <bundle-id> [parent-folder]}
 parent=${3:-$PWD}
 [[ "$name" =~ ^[A-Z][A-Za-z0-9]*$ ]] || { echo "AppName must be UpperCamelCase letters and digits, like Tasks or DailyLog"; exit 1; }
+[[ "$bundle" =~ ^[A-Za-z0-9-]+([.][A-Za-z0-9-]+)+$ ]] || { echo "bundle-id must be reverse-DNS letters, digits and hyphens, like com.yourname.tasks"; exit 1; }
 template=${0:A:h:h}/template
 git var GIT_AUTHOR_IDENT >/dev/null 2>&1 || { echo "git needs your name and email first: git config --global user.name \"Your Name\"; git config --global user.email you@example.com"; exit 1; }
 dest="$parent/$name"
