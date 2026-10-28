@@ -138,6 +138,11 @@ nonisolated enum AgentSocket {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(client, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
         }
         guard connected == 0 else { throw AgentError.unavailable("not running") }
+        var peerUID: uid_t = 0
+        var peerGID: gid_t = 0
+        guard getpeereid(client, &peerUID, &peerGID) == 0, peerUID == geteuid() else {
+            throw AgentError.unavailable("agent socket belongs to another user")
+        }
         write(client, request + Data("\n".utf8))
         var timeout = timeval(tv_sec: 30, tv_usec: 0)
         setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
