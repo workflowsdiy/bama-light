@@ -46,7 +46,17 @@ fi
 
 # build.sh puts the CLI on PATH.
 if ! grep -q "local/bin/$cli" "$app_dir/build.sh"; then
-  perl -0pi -e "s|(echo \"installed \\\$app[^\n]*\n)|\$1# The CLI: the app binary under a short name on PATH (agent-cli skill).\nmkdir -p \"\\\$HOME/.local/bin\"\nln -sf \"\\\$app/Contents/MacOS/\\\$name\" \"\\\$HOME/.local/bin/$cli\"\n|" "$app_dir/build.sh"
+  hook=$(printf '%s\n' \
+    '# The CLI link is created only when absent; an existing command stays.' \
+    'mkdir -p "$HOME/.local/bin"' \
+    "link=\"\$HOME/.local/bin/$cli\"" \
+    'target="$app/Contents/MacOS/$name"' \
+    'if [[ -e "$link" || -L "$link" ]]; then' \
+    '  [[ -L "$link" && "$(readlink "$link")" == "$target" ]] || { echo "$link belongs to another command; leaving it unchanged."; exit 1; }' \
+    'else' \
+    '  ln -s "$target" "$link"' \
+    'fi')
+  CLI_BUILD_HOOK="$hook" perl -0pi -e 's/^(echo "installed \$app[^\n]*\n)/$ENV{CLI_BUILD_HOOK}\n$1/m' "$app_dir/build.sh"
   grep -q "local/bin/$cli" "$app_dir/build.sh" || echo "note: add the ~/.local/bin/$cli link to build.sh by hand"
 fi
 

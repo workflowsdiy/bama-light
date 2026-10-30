@@ -13,6 +13,34 @@ scratch="$HOME/Library/Developer/$name/build"
 config=release
 [[ " $* " == *" --debug "* ]] && config=debug
 
+# One build owns this app's compiler products, icon, and installation at a time.
+lock="$HOME/Library/Developer/$name/build.lock"
+mkdir -p "${lock:h}"
+if ! mkdir "$lock" 2>/dev/null; then
+  echo "Another build owns $lock. If it stopped unexpectedly, remove that empty lock directory and retry."
+  exit 1
+fi
+final="$HOME/Applications/$name.app"
+stage=""
+cleanup() {
+  local rc=$?
+  if [[ -n "$stage" && -d "$stage" ]]; then
+    if [[ -e "$stage/previous.app" && ! -e "$final" ]]; then
+      if ! mv "$stage/previous.app" "$final"; then
+        print -u2 "Could not restore $final. The previous app is preserved at $stage/previous.app."
+        rmdir "$lock"
+        return 1
+      fi
+    fi
+    rm -rf "$stage"
+  fi
+  rmdir "$lock"
+  return $rc
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
+
 # Sign with your Apple Development certificate when you have one (Xcode >
 # Settings > Accounts). Otherwise sign ad hoc, which is fine for your own Mac.
 identity="${SIGN_IDENTITY:-}"
@@ -56,11 +84,9 @@ if [[ -e "$app" ]] && [[ "$(plutil -extract CFBundleIdentifier raw "$app/Content
   echo "$app is another app (not $bundle_id). Move it, or rename this one."
   exit 1
 fi
-# Assemble and sign beside it; the installed app is replaced only when that worked.
-final=$app
-app="$HOME/Applications/.$name-building.app"
-rm -rf "${app:?}"
-trap 'rm -rf "$HOME/Applications/.$name-building.app"' EXIT
+# Assemble and sign beside it; cleanup only owns this invocation's directory.
+stage=$(mktemp -d "$HOME/Applications/.$name-building.XXXXXX")
+app="$stage/$name.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/$name"
 sed -e "s/__BUILD__/$(date +%Y%m%d%H%M)/" "$here/Info.plist.in" > "$app/Contents/Info.plist"
@@ -83,7 +109,7 @@ if ! signed=$(codesign --force --sign "$identity" "$app" 2>&1); then
   exit 1
 fi
 print -r -- "$signed" | grep -v "replacing existing signature" || true
-rm -rf "${final:?}"
+[[ ! -e "$final" ]] || mv "$final" "$stage/previous.app"
 mv "$app" "$final"
 app=$final
 echo "installed $app (signed: ${identity})"

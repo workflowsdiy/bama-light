@@ -19,4 +19,14 @@ fi
 mkdir -m 700 "$shots"
 # Test runs neither restore nor save window state, so the real app's state stays as it was.
 front=0; [[ " $* " == *" --front "* ]] && front=1
-APP_SNAPSHOT_FRONT=$front APP_STORE=$store APP_SEED=1 APP_SNAPSHOT=$shots "$app" -ApplePersistenceIgnoreState YES -NSQuitAlwaysKeepsWindows NO
+log=$(mktemp /tmp/__APP_NAME__-snap.XXXXXX)
+trap 'rm -f "$log"' EXIT
+APP_SNAPSHOT_FRONT=$front APP_STORE=$store APP_SEED=1 APP_SNAPSHOT=$shots "$app" -ApplePersistenceIgnoreState YES -NSQuitAlwaysKeepsWindows NO | tee "$log"
+grep -Fxq "SNAPSHOT done $shots" "$log" || { print -u2 "Snapshot run did not finish"; exit 1; }
+expected=(${(f)"$(sed -n 's/^SNAPSHOT expected //p' "$log")"})
+(( ${#expected} > 0 )) || { print -u2 "No expected snapshots"; exit 1; }
+for shot in "${expected[@]}"; do
+  dimensions=$(sips -g pixelWidth -g pixelHeight "$shot" 2>/dev/null)
+  print -r -- "$dimensions" | grep -Eq 'pixelWidth: [1-9][0-9]*' &&
+    print -r -- "$dimensions" | grep -Eq 'pixelHeight: [1-9][0-9]*' || { print -u2 "Invalid snapshot: $shot"; exit 1; }
+done

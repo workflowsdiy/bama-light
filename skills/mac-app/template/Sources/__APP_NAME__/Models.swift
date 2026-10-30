@@ -34,6 +34,18 @@ final class Item: NSManagedObject, Identifiable {
     static func all() -> NSFetchRequest<Item> { NSFetchRequest<Item>(entityName: "Item") }
 }
 
+/// A confirmation keeps values, so an external delete cannot leave an inaccessible fault.
+struct ItemDeletion {
+    let id: UUID
+    let title: String
+
+    init?(_ item: Item) {
+        guard !item.isGone else { return nil }
+        id = item.uuid
+        title = item.title
+    }
+}
+
 /// The sidebar pages. Snapshot mode walks through every case.
 enum SidebarItem: String, CaseIterable, Identifiable {
     case all, starred
@@ -120,9 +132,22 @@ final class AppModel {
         return (try? context.fetch(request))?.first?.objectID
     }
 
+    func item(id: UUID) -> Item? {
+        let request = Item.all()
+        request.predicate = NSPredicate(format: "uuid == %@", id as NSUUID)
+        request.fetchLimit = 1
+        return (try? context.fetch(request))?.first
+    }
+
+    func delete(id: UUID, undoManager: UndoManager? = NSApp.keyWindow?.undoManager) {
+        guard let item = item(id: id) else { return }
+        delete(item, undoManager: undoManager)
+    }
+
     /// Deletes an item with Undo, which puts back a copy with the same values
     /// (and Redo deletes it again).
     func delete(_ item: Item, undoManager: UndoManager? = NSApp.keyWindow?.undoManager) {
+        guard !item.isGone, item.managedObjectContext === context else { return }
         let title = item.title, notes = item.notes, starred = item.isStarred
         let created = item.createdAt, uuid = item.uuid
         if selection == item.objectID { selection = nil }
@@ -130,15 +155,16 @@ final class AppModel {
         do { try save() } catch { NSAlert(error: error).runModal(); return }
         undoManager?.registerUndo(withTarget: self) { model in
             MainActor.assumeIsolated {
+                guard model.item(id: uuid) == nil else { return }
                 let copy = Item(context: model.context, title: title)
                 copy.notes = notes
                 copy.isStarred = starred
                 copy.createdAt = created
                 copy.uuid = uuid
-                model.saveOrReport()
+                do { try model.save() } catch { NSAlert(error: error).runModal(); return }
                 model.selection = copy.objectID
                 undoManager?.registerUndo(withTarget: model) { model in
-                    MainActor.assumeIsolated { model.delete(copy, undoManager: undoManager) }
+                    MainActor.assumeIsolated { model.delete(id: uuid, undoManager: undoManager) }
                 }
             }
         }

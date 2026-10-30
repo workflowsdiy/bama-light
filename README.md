@@ -62,9 +62,6 @@ you a round of "that's not how a Mac app looks".
 - **Optional agent access.** The `agent-cli` skill turns the app's binary into a CLI and an MCP server, so
   Claude, Codex or scripts can drive the running app.
 
-The plan lives in the conversation; the code and the checks live in the repository. No brief, backlog or
-review files.
-
 ## How it compares
 
 | | Needs Xcode | Agent checks the UI | Files beside the code |
@@ -138,6 +135,9 @@ For Codex by hand, link the same folders into `~/.agents/skills/`.
 
 ## Development
 
+Plugin updates apply to newly generated apps. Existing apps keep their copied sources and scripts;
+compare their templates before adopting fixes, preserving the app's own model and commands.
+
 Check a change to the skills by making an app from the template and running
 its checks, once with Xcode and once with only the Command Line Tools:
 
@@ -151,6 +151,7 @@ For `agent-cli`, add it to that app with `skills/agent-cli/scripts/add-agent-cli
 build, and run `skills/agent-cli/scripts/check-agent-cli.sh <cli-name>`.
 Commits pass `unbloat-check` ([unbloat](https://github.com/workflowsdiy/unbloat)),
 configured in `.unbloat.json`.
+Before publishing, run `./check-release.sh <previous-release-commit>`; shipped skill changes require a newer plugin version.
 
 ## Credits
 

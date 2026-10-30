@@ -99,7 +99,7 @@ enum AgentCLI {
 
     /// --name value, --name=value, --flag, and positional values, checked
     /// against the params. `--notes=--json` keeps text that looks like a flag.
-    static func parse(_ words: [String], for command: AgentCommand) throws -> [String: String] {
+    static func parse(_ words: [String], for command: AgentCommand) throws -> JSONObject {
         var values: [String: String] = [:]
         var positional = command.params.filter(\.positional)
         var index = 0
@@ -107,15 +107,14 @@ enum AgentCLI {
             let word = words[index]
             if word.hasPrefix("--"), let equals = word.firstIndex(of: "=") {
                 let name = String(word[word.index(word.startIndex, offsetBy: 2)..<equals])
-                guard command.params.contains(where: { $0.name == name }) else {
+                guard command.inputParams.contains(where: { $0.name == name }) else {
                     throw AgentError.usage("\(command.name) has no option --\(name). Run `__CLI_NAME__ \(command.name) --help`")
                 }
                 values[name] = String(word[word.index(after: equals)...])
                 index += 1
             } else if word.hasPrefix("--") {
                 let name = String(word.dropFirst(2))
-                if name == "yes", command.destructive { values["yes"] = "true"; index += 1; continue }
-                guard let param = command.params.first(where: { $0.name == name }) else {
+                guard let param = command.inputParams.first(where: { $0.name == name }) else {
                     throw AgentError.usage("\(command.name) has no option --\(name). Run `__CLI_NAME__ \(command.name) --help`")
                 }
                 let next = index + 1 < words.count ? words[index + 1] : nil
@@ -133,10 +132,23 @@ enum AgentCLI {
                 index += 1
             }
         }
-        for param in command.params where param.required && values[param.name] == nil {
-            throw AgentError.usage("missing \(param.positional ? "<\(param.name)>" : "--\(param.name)"). Example: \(command.example)")
+        var typed: JSONObject = [:]
+        for param in command.inputParams {
+            guard let raw = values[param.name] else { continue }
+            switch param.kind {
+            case .string: typed[param.name] = raw
+            case .integer:
+                guard let value = Int(raw) else { throw AgentError.usage("--\(param.name) must be a whole number") }
+                typed[param.name] = value
+            case .boolean:
+                switch raw.lowercased() {
+                case "", "true", "yes", "1": typed[param.name] = true
+                case "false", "no", "0": typed[param.name] = false
+                default: throw AgentError.usage("--\(param.name) must be true or false")
+                }
+            }
         }
-        return values
+        return try Args(typed, for: command).values
     }
 
     // MARK: Help
@@ -166,28 +178,26 @@ enum AgentCLI {
         var lines = ["\(command.summary)", "", "  __CLI_NAME__ \(command.name)" + command.params.map { param in
             let shown = param.positional ? "<\(param.name)>" : param.kind == .boolean ? "--\(param.name)" : "--\(param.name) <\(param.kind.rawValue)>"
             return " " + (param.required ? shown : "[\(shown)]")
-        }.joined() + (command.destructive ? " [--yes]" : "")]
+        }.joined() + (command.requiresConfirmation ? " [--yes]" : "")]
         if !command.params.isEmpty { lines.append("") }
         for param in command.params {
             lines.append("  " + (param.positional ? param.name : "--" + param.name).padding(toLength: 14, withPad: " ", startingAt: 0) + param.help)
         }
-        if command.destructive { lines.append("  --yes         do it. Without --yes it only shows what it would change") }
+        if command.requiresConfirmation { lines.append("  --yes         do it. Without --yes it only shows what it would change") }
         lines += ["", "Example: \(command.example)"]
         return lines.joined(separator: "\n")
     }
 
     static func schema(_ command: AgentCommand) -> JSONObject {
         var properties: JSONObject = [:]
-        for param in command.params {
+        for param in command.inputParams {
             properties[param.name] = ["type": param.kind.rawValue, "description": param.help]
-        }
-        if command.destructive {
-            properties["yes"] = ["type": "boolean", "description": "Do it. Without yes it only shows what it would change."]
         }
         return ["name": command.name, "description": command.summary + " Example: " + command.example,
                 "readOnly": command.readOnly, "destructive": command.destructive,
+                "requiresConfirmation": command.requiresConfirmation,
                 "inputSchema": ["type": "object", "properties": properties,
-                                "required": command.params.filter(\.required).map(\.name)]]
+                                "required": command.params.filter(\.required).map(\.name), "additionalProperties": false]]
     }
 
     // MARK: Output

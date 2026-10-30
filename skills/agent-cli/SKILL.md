@@ -50,18 +50,16 @@ shell, such as Claude Desktop. The MCP server is a thin layer over the same comm
 - With `--json`, an error is `{"ok":false,"error":{"code":"...","message":"..."}}`.
   Each message says what to do next, for example "no item with id 3f2a. Run `tasks items list`".
 - Read commands mark `readOnly`. Write commands change data.
-- Destructive commands (delete, send, empty) change nothing without `--yes`. They
+- Commands requiring confirmation (delete, send, empty) mark `requiresConfirmation` and change nothing without `--yes`. They
   return what they would do and the hint "add --yes".
-- Ids are the first 8 characters of each model's `uuid`. Any unique prefix works.
+- Commands replacing or removing data mark `destructive`; ordinary edits need no confirmation.
+- Ids are full UUIDs; `shortId` is for display. Any unique prefix works.
 - Lists take `--limit` and `--offset`, and return `total` and, when more exist, `nextOffset`.
 - Every option has a flag. No command asks a question, because an agent cannot answer one.
 - `help` lists every command. `help <command>` shows its options and an example.
   `help --json` returns every command as a schema.
 - The app is not running? The CLI opens it in the background and waits up to 10
   seconds. `--no-launch` fails with exit 4 instead.
-
-The full rules and reasons are in the template's code comments, and the checker
-enforces most of them.
 
 ## What not to build
 

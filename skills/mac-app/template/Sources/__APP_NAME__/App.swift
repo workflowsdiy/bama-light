@@ -57,6 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// AppModel saves pending changes on the same notification.
     func applicationWillTerminate(_ notification: Notification) {
         if SelfTest.requested { exit(SelfTest.exitCode) }
+        if Snapshot.requested { exit(Snapshot.exitCode) }
     }
 }
 
@@ -145,7 +146,7 @@ enum Store {
             // Say what failed and where, instead of crashing on every launch.
             let alert = NSAlert(error: error)
             alert.messageText = "__APP_NAME__ could not open its database"
-            alert.informativeText = "\(url.path)\n\n\(error.localizedDescription)\n\nMove that file aside to start with an empty database."
+            alert.informativeText = "\(url.path)\n\n\(error.localizedDescription)\n\nQuit the app and preserve the entire database folder, including its -wal and -shm files, before attempting recovery. Check permissions and available storage. Only start empty deliberately, after preserving the complete folder."
             alert.runModal()
             exit(1)
         }

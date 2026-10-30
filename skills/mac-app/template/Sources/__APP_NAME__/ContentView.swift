@@ -37,7 +37,7 @@ struct ItemList: View {
     @Environment(\.undoManager) private var undoManager
     @FetchRequest(sortDescriptors: [SortDescriptor(\Item.createdAt, order: .reverse)]) private var items: FetchedResults<Item>
     @AppStorage("confirmDelete", store: Store.defaults) private var confirmDelete = false
-    @State private var pendingDelete: Item?
+    @State private var pendingDelete: ItemDeletion?
     let page: SidebarItem
 
     private var visible: [Item] {
@@ -51,19 +51,23 @@ struct ItemList: View {
                 .tag(item.objectID)
                 .contextMenu {
                     Button("Delete", role: .destructive) {
-                        if confirmDelete { pendingDelete = item } else { model.delete(item, undoManager: undoManager) }
+                        if confirmDelete { pendingDelete = ItemDeletion(item) } else { model.delete(item, undoManager: undoManager) }
                     }
                 }
         }
         // Edit > Delete and the Delete key, only while the list has focus.
         .onDeleteCommand {
             guard let id = model.selection, let item = try? model.context.existingObject(with: id) as? Item else { return }
-            if confirmDelete { pendingDelete = item } else { model.delete(item, undoManager: undoManager) }
+            if confirmDelete { pendingDelete = ItemDeletion(item) } else { model.delete(item, undoManager: undoManager) }
+        }
+        .onChange(of: items.map(\.uuid)) { _, ids in
+            if let pendingDelete, !ids.contains(pendingDelete.id) { self.pendingDelete = nil }
         }
         .confirmationDialog("Delete \"\(pendingDelete?.title ?? "")\"?", isPresented: Binding(
             get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })) {
             Button("Delete", role: .destructive) {
-                if let item = pendingDelete { model.delete(item, undoManager: undoManager) }
+                if let pendingDelete { model.delete(id: pendingDelete.id, undoManager: undoManager) }
+                pendingDelete = nil
             }
         } message: {
             Text("Edit > Undo brings it back.")

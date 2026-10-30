@@ -62,39 +62,102 @@ for t in tools:
 # ending in " add", " show" and " delete"). Every required param of add gets a test value.
 # The test copy must keep the same pid, so a crash (which the CLI hides by relaunching
 # the app) still fails the check.
-plan=$(python3 -I -c '
-import json, sys
-cmds = {c["name"]: c for c in json.loads(sys.argv[1])["commands"]}
-nouns = [n[:-4] for n in cmds if n.endswith(" add") and n[:-4] + " show" in cmds and n[:-4] + " delete" in cmds]
-if not nouns: sys.exit(1)
-noun = nouns[0]; add = cmds[noun + " add"]["inputSchema"]
-args = []
-for name in add.get("required", []):
-    kind = add["properties"][name]["type"]
-    args.append("--" + name if kind == "boolean" else "--%s=%s" % (name, 1 if kind in ("integer", "number") else "Check round trip"))
-key = lambda c: (cmds[c]["inputSchema"].get("required") or ["id"])[0]
-print(noun); print(key(noun + " show")); print(key(noun + " delete")); print("\n".join(args))
-' "$schema" 2>/dev/null)
-if [[ -z "$plan" ]]; then
-  fail "a write round trip needs <noun> add, <noun> show and <noun> delete commands"
-else
-  noun=${${(f)plan}[1]} show_key=${${(f)plan}[2]} delete_key=${${(f)plan}[3]} add_args=(${${(f)plan}[4,-1]})
-  pid_before=$(lsof -t "$APP_AGENT_SOCKET" 2>/dev/null | head -1)
-  added=$("$cli" ${=noun} add "${add_args[@]}" --json 2>/dev/null)
-  id=$(python3 -I -c 'import json,sys; print(json.loads(sys.argv[1])["id"])' "$added" 2>/dev/null)
-  if [[ -z "$id" ]]; then
-    fail "$noun add --json returns the new item with its id"
-  else
-    pass "$noun add --json returns the new item"
-    "$cli" ${=noun} show "--$show_key=$id" --json >/dev/null 2>&1 && pass "$noun show" || fail "$noun show the added item"
-    "$cli" ${=noun} delete "--$delete_key=$id" --yes --json >/dev/null 2>&1 && pass "$noun delete --yes" || fail "$noun delete --yes exits 0"
-    python3 -I -c 'import time; time.sleep(1)'
-    pid_after=$(lsof -t "$APP_AGENT_SOCKET" 2>/dev/null | head -1)
-    [[ -n "$pid_before" && "$pid_after" == "$pid_before" ]] && kill -0 "$pid_after" 2>/dev/null \
-      && pass "test copy survives the delete (same pid, alive)" || fail "test copy survives the delete (pid $pid_before -> ${pid_after:-none})"
-  fi
-fi
-pid_after=${pid_after:-$(lsof -t "$APP_AGENT_SOCKET" 2>/dev/null | head -1)}
+pid_before=$(lsof -t "$APP_AGENT_SOCKET" 2>/dev/null | head -1)
+python3 -I -c '
+import json, subprocess, sys
+cli = sys.argv[1]
+cmds = {c["name"]: c for c in json.loads(sys.argv[2])["commands"]}
+
+def command(name, args, code=0):
+    words = ["--%s=%s" % (key, str(value).lower() if isinstance(value, bool) else value) for key, value in args.items()]
+    result = subprocess.run([cli, *name.split(), *words, "--json"], capture_output=True, text=True, timeout=30)
+    assert result.returncode == code, (name, result.returncode, result.stdout, result.stderr)
+    return json.loads(result.stdout)
+
+def rpc(messages):
+    initialize = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2999-01-01", "capabilities": {}, "clientInfo": {"name": "check", "version": "1"}}}
+    lines = [json.dumps(initialize), json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"})]
+    lines += [m if isinstance(m, str) else json.dumps(m) for m in messages]
+    result = subprocess.run([cli, "mcp"], input="\n".join(lines) + "\n", capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    replies = [json.loads(line) for line in result.stdout.splitlines()]
+    assert len(replies) == len(messages) + 1, replies
+    assert replies[0]["result"]["protocolVersion"] == "2025-06-18", replies[0]
+    return replies[1:]
+
+def call_message(name, args, ident=2):
+    return {"jsonrpc": "2.0", "id": ident, "method": "tools/call", "params": {"name": name.replace(" ", "_"), "arguments": args}}
+
+def tool(name, args):
+    reply = rpc([call_message(name, args)])[0]
+    result = reply["result"]
+    assert result.get("isError") is False, reply
+    return json.loads(result["content"][0]["text"])
+
+def same_item(item, ident, values):
+    assert item["id"] == ident, item
+    for key, value in values.items():
+        assert item[key] == value, (key, value, item)
+
+try:
+    nouns = [n[:-4] for n in cmds if n.endswith(" add") and n[:-4] + " show" in cmds and n[:-4] + " delete" in cmds]
+    assert nouns, "need <noun> add, show and delete commands"
+    noun = nouns[0]
+    add, show, delete = (noun + " " + action for action in ["add", "show", "delete"])
+    add_schema = cmds[add]["inputSchema"]
+    key = lambda name: (cmds[name]["inputSchema"].get("required") or ["id"])[0]
+    values = {}
+    for name, prop in add_schema["properties"].items():
+        if name not in add_schema.get("required", []) and name not in ("notes", "starred"):
+            continue
+        values[name] = prop.get("enum", [True if prop["type"] == "boolean" else 1 if prop["type"] in ("integer", "number") else "Check round trip"])[0]
+
+    for source in ["CLI", "MCP"]:
+        added = command(add, values) if source == "CLI" else tool(add, values)
+        ident = added["id"]
+        assert isinstance(ident, str) and ident, added
+        same_item(added, ident, values)
+        same_item(command(show, {key(show): ident}), ident, values)
+        if source == "MCP":
+            same_item(tool(show, {key(show): ident}), ident, values)
+        print("PASS " + source + ": created values survive independent lookup")
+        delete_args = {key(delete): ident}
+        preview = command(delete, delete_args) if source == "CLI" else tool(delete, delete_args)
+        assert preview["deleted"] is False, preview
+        same_item(preview["wouldDelete"], ident, values)
+        same_item(command(show, {key(show): ident}), ident, values)
+        print("PASS " + source + ": deletion preview leaves the item unchanged")
+        confirmed = dict(delete_args, yes=True)
+        deleted = command(delete, confirmed) if source == "CLI" else tool(delete, confirmed)
+        assert deleted["deleted"] is True and deleted["item"]["id"] == ident, deleted
+        missing = command(show, {key(show): ident}, code=3)
+        assert missing["error"]["code"] == "not_found", missing
+        print("PASS " + source + ": confirmed deletion makes lookup return not_found")
+
+    invalid = dict(values)
+    invalid[next(iter(add_schema["properties"]), "unknown_argument")] = {}
+    replies = rpc([
+        "{",
+        {"jsonrpc": "1.0", "id": 3, "method": "ping"},
+        call_message("no such tool", {}, 4),
+        call_message(add, invalid, 5),
+        call_message(delete, dict(delete_args, yes="true"), 6),
+        call_message(add, dict(values, unknown_argument=True), 7),
+        call_message(show, {key(show): ident}, 8),
+    ])
+    assert [r["error"]["code"] for r in replies[:6]] == [-32700, -32600, -32602, -32602, -32602, -32602], replies
+    assert replies[6]["result"]["isError"] is True, replies[6]
+    error = json.loads(replies[6]["result"]["content"][0]["text"])
+    assert error.get("error", error)["code"] == "not_found", error
+    print("PASS mcp: version negotiation, malformed requests, typed arguments and execution errors")
+except Exception as error:
+    print("FAIL round trip: " + str(error), file=sys.stderr)
+    sys.exit(1)
+' "$cli" "$schema" && pass "CLI and MCP write round trips" || fail "CLI and MCP write round trips"
+sleep 1
+pid_after=$(lsof -t "$APP_AGENT_SOCKET" 2>/dev/null | head -1)
+[[ -n "$pid_before" && "$pid_after" == "$pid_before" ]] && kill -0 "$pid_after" 2>/dev/null \
+  && pass "test copy survives the round trips (same pid, alive)" || fail "test copy survives the round trips (pid $pid_before -> ${pid_after:-none})"
 
 # Quit the test copy only: the process that owns the test socket.
 [[ -n "$pid_after" ]] && kill "$pid_after" 2>/dev/null

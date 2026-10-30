@@ -35,7 +35,7 @@ enum AgentCommands {
             return result
         },
         AgentCommand(name: "items show", summary: "Show one item.",
-                     params: [.init(name: "id", required: true, positional: true, help: "the item's id (the first 8 characters are enough)")],
+                     params: [.init(name: "id", required: true, positional: true, help: "the item's full id or a unique prefix")],
                      example: "__CLI_NAME__ items show 3f2a9c1e --json", readOnly: true) { args, model in
             try find(try args.required("id"), in: model).agentJSON
         },
@@ -60,7 +60,7 @@ enum AgentCommands {
                               .init(name: "title", help: "new title"),
                               .init(name: "notes", help: "new notes"),
                               .init(name: "starred", kind: .boolean, help: "true or false")],
-                     example: "__CLI_NAME__ items update 3f2a9c1e --starred false --json") { args, model in
+                     example: "__CLI_NAME__ items update 3f2a9c1e --starred false --json", destructive: true) { args, model in
             let item = try find(try args.required("id"), in: model)
             let title = args.string("title").map(ItemTitle.clean)
             let notes = args.string("notes")
@@ -73,7 +73,7 @@ enum AgentCommands {
         },
         AgentCommand(name: "items delete", summary: "Delete an item.",
                      params: [.init(name: "id", required: true, positional: true, help: "the item's id")],
-                     example: "__CLI_NAME__ items delete 3f2a9c1e --yes --json", destructive: true) { args, model in
+                     example: "__CLI_NAME__ items delete 3f2a9c1e --yes --json", destructive: true, requiresConfirmation: true) { args, model in
             let item = try find(try args.required("id"), in: model)
             let shown = item.agentJSON
             guard args.confirmed else { return ["deleted": false, "wouldDelete": shown, "hint": "add --yes to delete it"] }
@@ -99,7 +99,8 @@ enum AgentCommands {
     /// An item by its id, or the start of it.
     static func find(_ id: String, in model: AppModel) throws -> Item {
         let items = try model.context.fetch(Item.all())
-        let matches = items.filter { $0.agentID.hasPrefix(id.lowercased()) }
+        let prefix = id.lowercased().replacingOccurrences(of: "-", with: "")
+        let matches = items.filter { $0.agentID.replacingOccurrences(of: "-", with: "").hasPrefix(prefix) }
         guard let item = matches.first else { throw AgentError.notFound("no item with id \(id). Run `__CLI_NAME__ items list`") }
         guard matches.count == 1 else { throw AgentError.usage("\(matches.count) items start with \(id). Give more characters") }
         return item
@@ -107,11 +108,11 @@ enum AgentCommands {
 }
 
 extension Item {
-    /// A stable id for agents: lowercase, without dashes.
-    var agentID: String { uuid.uuidString.lowercased().replacingOccurrences(of: "-", with: "") }
+    /// The full canonical id; unique prefixes are accepted for convenience.
+    var agentID: String { uuid.uuidString.lowercased() }
 
     var agentJSON: JSONObject {
-        ["id": String(agentID.prefix(8)), "title": title, "notes": notes, "starred": isStarred,
+        ["id": agentID, "shortId": String(agentID.prefix(8)), "title": title, "notes": notes, "starred": isStarred,
          "createdAt": JSON.date(createdAt)]
     }
 }

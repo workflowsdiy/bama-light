@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 
 // The agent interface: one list of commands (AgentCommands.swift) that the
@@ -25,35 +26,62 @@ struct AgentCommand {
     var example: String
     /// Only reads. Agents may run it without asking.
     var readOnly = false
-    /// Removes data or cannot be undone. Without --yes it only reports what it would do.
+    /// Can replace or remove existing data (MCP destructiveHint).
     var destructive = false
+    /// Without --yes, only reports what it would do.
+    var requiresConfirmation = false
     var run: (Args, AppModel) throws -> Any
+
+    var inputParams: [Param] {
+        params + (requiresConfirmation ? [.init(name: "yes", kind: .boolean,
+                    help: "Do it. Without yes it only shows what it would change.")] : [])
+    }
 }
 
 /// The values a command was called with, checked against its params.
 struct Args {
-    var values: [String: String]
+    let values: JSONObject
 
-    func string(_ name: String) -> String? { values[name] }
+    init(_ values: JSONObject, for command: AgentCommand) throws {
+        let params = command.inputParams
+        if let unknown = values.keys.sorted().first(where: { name in !params.contains { $0.name == name } }) {
+            throw AgentError.usage("\(command.name) has no option --\(unknown)")
+        }
+        for param in params {
+            guard let value = values[param.name] else {
+                if param.required { throw AgentError.usage("missing --\(param.name). Example: \(command.example)") }
+                continue
+            }
+            let valid: Bool
+            switch param.kind {
+            case .string:
+                valid = (value as? String).map { !param.required || !$0.isEmpty } ?? false
+            case .boolean:
+                valid = (value as? NSNumber).map { CFGetTypeID($0) == CFBooleanGetTypeID() } ?? false
+            case .integer:
+                valid = (value as? NSNumber).map {
+                    CFGetTypeID($0) != CFBooleanGetTypeID() && $0.decimalValue == Decimal($0.int64Value)
+                        && Int(exactly: $0.int64Value) != nil
+                } ?? false
+            }
+            guard valid else { throw AgentError.usage("--\(param.name) must be \(param.kind.rawValue)\(param.required && param.kind == .string ? " and nonempty" : "")") }
+        }
+        self.values = values
+    }
+
+    func string(_ name: String) -> String? { values[name] as? String }
 
     func required(_ name: String) throws -> String {
-        guard let value = values[name], !value.isEmpty else { throw AgentError.usage("missing --\(name)") }
+        guard let value = string(name), !value.isEmpty else { throw AgentError.usage("missing --\(name)") }
         return value
     }
 
     func int(_ name: String, default fallback: Int) throws -> Int {
-        guard let raw = values[name] else { return fallback }
-        guard let value = Int(raw) else { throw AgentError.usage("--\(name) must be a whole number, not \"\(raw)\"") }
-        return value
+        values[name] as? Int ?? fallback
     }
 
     func bool(_ name: String) throws -> Bool? {
-        guard let raw = values[name] else { return nil }
-        switch raw.lowercased() {
-        case "", "true", "yes", "1": return true
-        case "false", "no", "0": return false
-        default: throw AgentError.usage("--\(name) must be true or false, not \"\(raw)\"")
-        }
+        values[name] as? Bool
     }
 
     var confirmed: Bool { (try? bool("yes")) == true }
@@ -88,7 +116,8 @@ enum AgentRouter {
                 throw AgentError.usage("unknown command \"\(name)\". Run `__CLI_NAME__ help`")
             }
             guard let model else { throw AgentError.unavailable("the app is still starting. Try again") }
-            let args = Args(values: object["args"] as? [String: String] ?? [:])
+            guard object["args"] == nil || object["args"] is JSONObject else { throw AgentError.usage("args must be an object") }
+            let args = try Args(object["args"] as? JSONObject ?? [:], for: command)
             reply = ["ok": true, "result": try command.run(args, model)]
         } catch let error as AgentError {
             reply = error.json

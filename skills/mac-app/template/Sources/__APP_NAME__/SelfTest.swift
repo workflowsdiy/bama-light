@@ -11,7 +11,7 @@ import __APP_NAME__Kit
 enum SelfTest {
     static var requested: Bool { CommandLine.arguments.contains("--selftest") }
     /// Read by AppDelegate.applicationWillTerminate.
-    static var exitCode: Int32 = 0
+    static var exitCode: Int32 = 1
     private static var failures = 0
     private static var count = 0
 
@@ -30,6 +30,7 @@ enum SelfTest {
             check("the new item is selected", model.selection != nil)
 
             if let item = items().first(where: { $0.objectID == model.selection }) {
+                item.title = "Deferred deletion"
                 item.isStarred.toggle()
                 check("starring an item marks it starred", item.isStarred)
                 let undo = UndoManager()
@@ -42,6 +43,19 @@ enum SelfTest {
                 check("Undo brings the item back", items().count == before + 1)
                 undo.redo()
                 check("Redo deletes it again", items().count == before)
+                undo.undo()
+                if let restored = items().first {
+                    let pending = ItemDeletion(restored)
+                    context.delete(restored)
+                    try? model.save()
+                    check("confirmation keeps a title after external deletion", pending?.title == "Deferred deletion")
+                    if let pending { model.delete(id: pending.id, undoManager: nil) }
+                    model.delete(restored, undoManager: nil)
+                    undo.redo()
+                    check("confirmation and Redo tolerate external deletion", items().count == before)
+                } else {
+                    check("Undo restores an item for external deletion", false)
+                }
             }
             check("titles are cleaned", ItemTitle.clean("  Buy   milk ") == "Buy milk")
 
